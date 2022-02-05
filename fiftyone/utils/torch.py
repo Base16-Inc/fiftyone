@@ -850,6 +850,7 @@ class KeypointDetectorOutputProcessor(OutputProcessor):
         _detections = []
         _keypoints = []
         _polylines = []
+        instance_id = 0
         for box, label, score, kpts, kpt_scores in zip(boxes, labels, scores, keypoints, keypoints_scores):
             if confidence_thresh is not None and score < confidence_thresh:
                 continue
@@ -870,6 +871,7 @@ class KeypointDetectorOutputProcessor(OutputProcessor):
                     label=self.class_labels[label],
                     bounding_box=bounding_box,
                     confidence=score,
+                    instance_id=instance_id,
                 )
             )
 
@@ -879,6 +881,7 @@ class KeypointDetectorOutputProcessor(OutputProcessor):
                     points=points,
                     visible=visible,
                     confidences=kpt_scores.tolist(),
+                    instance_id=instance_id,
                 )
             )
 
@@ -889,8 +892,10 @@ class KeypointDetectorOutputProcessor(OutputProcessor):
                         confidence=score,
                         closed=False,
                         filled=False,
+                        instance_id=instance_id,
                     )
                 )
+            instance_id += 1
 
         label = {
             "detections": fol.Detections(detections=_detections),
