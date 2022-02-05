@@ -951,6 +951,7 @@ class COCOObject(object):
             confidence=self.score,
             closed=False,
             filled=True,
+            instance_id=self.id,
             **attributes,
         )
 
@@ -983,7 +984,7 @@ class COCOObject(object):
                 visible.append(True)
 
         return fol.Keypoint(
-            label=label, points=points, visible=visible, **self.attributes,
+            label=label, points=points, visible=visible, instance_id=self.id, **self.attributes,
         )
 
     def to_detection(
@@ -1028,6 +1029,7 @@ class COCOObject(object):
             bounding_box=bounding_box,
             mask=mask,
             confidence=self.score,
+            instance_id=self.id,
             **attributes,
         )
 
