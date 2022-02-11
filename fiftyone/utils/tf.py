@@ -796,6 +796,7 @@ class TFObjectDetectionDatasetExporter(TFRecordsDatasetExporter):
         num_shards=None,
         image_format=None,
         classes=None,
+        kpt_label_map=None,
     ):
         super().__init__(
             export_dir=export_dir,
@@ -805,10 +806,11 @@ class TFObjectDetectionDatasetExporter(TFRecordsDatasetExporter):
         )
 
         self.classes = classes
+        self.kpt_label_map = kpt_label_map
 
     @property
     def label_cls(self):
-        return fol.Detections
+        return [fol.Detections, fol.Keypoints]
 
     def log_collection(self, sample_collection):
         if self.classes is None:
@@ -820,7 +822,7 @@ class TFObjectDetectionDatasetExporter(TFRecordsDatasetExporter):
                 self.classes = sample_collection.info["classes"]
 
     def _make_example_generator(self):
-        return TFObjectDetectionExampleGenerator(classes=self.classes)
+        return TFObjectDetectionExampleGenerator(classes=self.classes, kpt_label_map=self.kpt_label_map)
 
 
 class TFExampleGenerator(object):
@@ -932,7 +934,7 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
             class list is dynamically generated as examples are processed
     """
 
-    def __init__(self, classes=None):
+    def __init__(self, classes=None, kpt_label_map=None):
         if classes:
             labels_map_rev = _to_labels_map_rev(classes)
             dynamic_classes = False
@@ -942,8 +944,9 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
 
         self._labels_map_rev = labels_map_rev
         self._dynamic_classes = dynamic_classes
+        self._kpt_label_map = kpt_label_map
 
-    def make_tf_example(self, image_or_path, detections, filename=None):
+    def make_tf_example(self, image_or_path, label, filename=None):
         """Makes a ``tf.train.Example`` for the given data.
 
         Args:
@@ -973,6 +976,13 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
             "image/format": _bytes_feature(format.encode()),
         }
 
+        detections = None
+        keypoints = None
+        if isinstance(label, fol.Detections):
+            detections = label
+        elif isinstance(label, fol.Keypoints):
+            keypoints = label
+        
         if detections is not None:
             xmins, xmaxs, ymins, ymaxs, texts, labels = [], [], [], [], [], []
             for detection in detections.detections:
@@ -1010,6 +1020,34 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
                     "image/object/bbox/ymax": _float_list_feature(ymaxs),
                     "image/object/class/text": _bytes_list_feature(texts),
                     "image/object/class/label": _int64_list_feature(labels),
+                }
+            )
+        elif keypoints is not None and self._kpt_label_map is not None:
+            kpts_x, kpts_y, kpts_v, num_kpts, kpts_text = [], [], [], [], []
+            for keypoint in keypoints.keypoints:
+                if keypoint.label not in self._kpt_label_map:
+                    continue
+
+                for point, v in zip(keypoint.points, keypoint.visible):
+                    kpts_x.append(point[0])
+                    kpts_y.append(point[1])
+                    if v:
+                        kpts_v.append(2)
+                    else:
+                        kpts_v.append(0) 
+
+                num_kpts.append(keypoint.visible.count(True))
+                kpts_name = self._kpt_label_map[keypoint.label]
+                kpts_name = [name.encode() for name in kpts_name]
+                kpts_text.extend(kpts_name)
+            
+            feature.update(
+                {
+                    "image/object/keypoint/x": _float_list_feature(kpts_x),
+                    "image/object/keypoint/y": _float_list_feature(kpts_y),
+                    "image/object/keypoint/num": _float_list_feature(num_kpts),
+                    "image/object/keypoint/visibility": _int64_list_feature(kpts_v),
+                    "image/object/keypoint/text": _bytes_list_feature(kpts_text),
                 }
             )
 
