@@ -277,6 +277,7 @@ def _parse_task_metadata(
     start_frame = resp.get("start_frame", None)
     stop_frame = resp.get("stop_frame", None)
     chunk_size = resp.get("chunk_size", None)
+    size = resp.get("size", None)
 
     cvat_id_map = {}
     for frame_id, frame in enumerate(resp["frames"]):
@@ -296,6 +297,7 @@ def _parse_task_metadata(
                         start_frame,
                         stop_frame,
                         chunk_size,
+                        size,
                     )
                 )
 
@@ -333,11 +335,12 @@ def _do_download_media(task):
         start_frame,
         stop_frame,
         chunk_size,
+        size,
     ) = task
 
     if fom.get_media_type(filepath) == fom.VIDEO:
         ext = os.path.splitext(filepath)[1]
-        num_chunks = int(np.ceil((stop_frame - start_frame) / chunk_size))
+        num_chunks = int(np.ceil(size / chunk_size))
 
         # CVAT stores videos in chunks, so we must download them individually
         # and then concatenate them...
