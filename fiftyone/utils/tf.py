@@ -976,13 +976,22 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
             "image/format": _bytes_feature(format.encode()),
         }
 
+        if isinstance(label, dict):
+            for lb in label.values():
+                self._update_feature_from_label(feature=feature, label=lb)
+        else:
+            self._update_feature_from_label(feature=feature, label=label)
+
+        return tf.train.Example(features=tf.train.Features(feature=feature))
+
+    def _update_feature_from_label(self, feature, label):
         detections = None
         keypoints = None
         if isinstance(label, fol.Detections):
             detections = label
         elif isinstance(label, fol.Keypoints):
             keypoints = label
-        
+
         if detections is not None:
             xmins, xmaxs, ymins, ymaxs, texts, labels = [], [], [], [], [], []
             for detection in detections.detections:
@@ -1050,9 +1059,6 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
                     "image/object/keypoint/text": _bytes_list_feature(kpts_text),
                 }
             )
-
-        return tf.train.Example(features=tf.train.Features(feature=feature))
-
 
 def _get_classes_for_detections(samples, label_field):
     classes = set()
