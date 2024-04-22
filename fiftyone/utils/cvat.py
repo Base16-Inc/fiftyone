@@ -6442,13 +6442,26 @@ class CVATAnnotationAPI(foua.AnnotationAPI):
                 continue
 
             abs_points = HasCVATPoints._to_abs_points(kp.points, frame_size)
-            flattened_points = list(itertools.chain.from_iterable(abs_points))
+
+            elements = []
+            start_id = 39
+            for pt in abs_points:
+                elements.append(
+                    {
+                        "type": "points",
+                        "points": list(itertools.chain.from_iterable([pt])),
+                        "label_id": start_id,
+                        "frame": 0,
+                    }
+                )
+
+                start_id += 1
 
             shape = {
-                "type": "points",
+                "type": "skeleton",
                 "occluded": is_occluded,
                 "z_order": 0,
-                "points": flattened_points,
+                "elements": elements,
                 "label_id": class_name,
                 "group": group_id,
                 "frame": frame_id,
