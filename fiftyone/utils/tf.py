@@ -18,6 +18,8 @@ from skimage.color import rgba2rgb
 import eta.core.image as etai
 import eta.core.utils as etau
 
+import tensorflow as tf
+
 import fiftyone as fo
 import fiftyone.core.labels as fol
 import fiftyone.core.metadata as fom
@@ -25,8 +27,6 @@ import fiftyone.core.utils as fou
 import fiftyone.utils.data as foud
 
 fou.ensure_tf(eager=True)
-import tensorflow as tf
-
 
 logger = logging.getLogger(__name__)
 
@@ -857,6 +857,7 @@ class TFObjectDetectionDatasetExporter(TFRecordsDatasetExporter):
         image_format=None,
         force_rgb=False,
         classes=None,
+        kpt_label_map=None,
     ):
         super().__init__(
             export_dir=export_dir,
@@ -867,14 +868,17 @@ class TFObjectDetectionDatasetExporter(TFRecordsDatasetExporter):
         )
 
         self.classes = classes
+        self.kpt_label_map = kpt_label_map
 
     @property
     def label_cls(self):
-        return fol.Detections
+        return [fol.Detections, fol.Keypoints]
 
     def _make_example_generator(self):
         return TFObjectDetectionExampleGenerator(
-            force_rgb=self.force_rgb, classes=self.classes
+            force_rgb=self.force_rgb,
+            classes=self.classes,
+            kpt_label_map=self.kpt_label_map,
         )
 
 
@@ -885,8 +889,9 @@ class TFExampleGenerator(object):
         force_rgb (False): whether to force convert all images to RGB
     """
 
-    def __init__(self, force_rgb=False):
+    def __init__(self, force_rgb=False, kpt_label_map=None):
         self.force_rgb = force_rgb
+        self._kpt_label_map = kpt_label_map
 
     def make_tf_example(self, image_or_path, label, *args, **kwargs):
         """Makes a ``tf.train.Example`` for the given data.
@@ -1012,7 +1017,7 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
         classes (None): the list of possible class labels
     """
 
-    def __init__(self, force_rgb=False, classes=None):
+    def __init__(self, force_rgb=False, classes=None, kpt_label_map=None):
         super().__init__(force_rgb=force_rgb)
 
         self.classes = classes
@@ -1026,8 +1031,9 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
 
         self._dynamic_classes = dynamic_classes
         self._labels_map_rev = labels_map_rev
+        self._kpt_label_map = kpt_label_map
 
-    def make_tf_example(self, image_or_path, detections, filename=None):
+    def make_tf_example(self, image_or_path, labels, filename=None):
         """Makes a ``tf.train.Example`` for the given data.
 
         Args:
@@ -1056,6 +1062,22 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
             "image/encoded": _bytes_feature(img_bytes),
             "image/format": _bytes_feature(format.encode()),
         }
+
+        if isinstance(labels, dict):
+            for label in labels.values():
+                self._update_feature_from_label(feature=feature, label=label)
+        else:
+            self._update_feature_from_label(feature=feature, label=labels)
+
+        return tf.train.Example(features=tf.train.Features(feature=feature))
+
+    def _update_feature_from_label(self, feature, label):
+        detections = None
+        keypoints = None
+        if isinstance(label, fol.Detections):
+            detections = label
+        elif isinstance(label, fol.Keypoints):
+            keypoints = label
 
         if detections is not None:
             xmins, xmaxs, ymins, ymaxs, texts, labels = [], [], [], [], [], []
@@ -1096,8 +1118,38 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
                     "image/object/class/label": _int64_list_feature(labels),
                 }
             )
+        elif keypoints is not None and self._kpt_label_map is not None:
+            kpts_x, kpts_y, kpts_v, num_kpts, kpts_text = [], [], [], [], []
+            for keypoint in keypoints.keypoints:
+                if keypoint.label not in self._kpt_label_map:
+                    continue
 
-        return tf.train.Example(features=tf.train.Features(feature=feature))
+                for point, o in zip(keypoint.points, keypoint.occluded):
+                    kpts_x.append(point[0])
+                    kpts_y.append(point[1])
+                    if o:
+                        kpts_v.append(0)
+                    else:
+                        kpts_v.append(2)
+
+                num_kpts.append(keypoint.occluded.count(False))
+                kpts_name = self._kpt_label_map[keypoint.label]
+                kpts_name = [name.encode() for name in kpts_name]
+                kpts_text.extend(kpts_name)
+
+            feature.update(
+                {
+                    "image/object/keypoint/x": _float_list_feature(kpts_x),
+                    "image/object/keypoint/y": _float_list_feature(kpts_y),
+                    "image/object/keypoint/num": _float_list_feature(num_kpts),
+                    "image/object/keypoint/visibility": _int64_list_feature(
+                        kpts_v
+                    ),
+                    "image/object/keypoint/text": _bytes_list_feature(
+                        kpts_text
+                    ),
+                }
+            )
 
 
 def _get_classes_for_detections(samples, label_field):

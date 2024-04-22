@@ -5887,6 +5887,9 @@ class CVATAnnotationAPI(foua.AnnotationAPI):
             elif shape_type == "points":
                 label_type = "keypoints"
                 label = cvat_shape.to_keypoint()
+            elif shape_type == "skeleton":
+                label_type = "keypoints"
+                label = cvat_shape.to_keypoint()
 
             if keyframe and label is not None:
                 label["keyframe"] = True
@@ -6454,14 +6457,41 @@ class CVATAnnotationAPI(foua.AnnotationAPI):
             if class_name is None:
                 continue
 
-            abs_points = HasCVATPoints._to_abs_points(kp.points, frame_size)
-            flattened_points = list(itertools.chain.from_iterable(abs_points))
+            if hasattr(kp, "occluded"):
+                occluded = kp.occluded
+            else:
+                occluded = [False] * len(kp.points)
+
+            elements = []
+
+            start_id_dict = {"golfer_kpts": 57, "golfclub_kpts": 76}
+            start_id = start_id_dict[class_name]
+
+            w, h = frame_size
+            for p, o in zip(kp.points, occluded):
+                x, y = p
+                outside = False
+                if np.isnan(x) | np.isnan(y):
+                    x = 0
+                    y = 0
+                    outside = True
+                elements.append(
+                    {
+                        "type": "points",
+                        "points": [int(round(x * w)), int(round(y * h))],
+                        "label_id": start_id,
+                        "frame": 0,
+                        "outside": outside,
+                        "occluded": o,
+                    }
+                )
+                start_id += 1
 
             shape = {
-                "type": "points",
+                "type": "skeleton",
                 "occluded": is_occluded,
                 "z_order": 0,
-                "points": flattened_points,
+                "elements": elements,
                 "label_id": class_name,
                 "group": group_id,
                 "frame": frame_id,
@@ -6992,6 +7022,7 @@ class CVATShape(CVATLabel):
 
         self.frame_size = (metadata["width"], metadata["height"])
         self.points = label_dict["points"]
+        self.elements = label_dict["elements"]
         self.index = index
 
         if "rotation" in label_dict and int(label_dict["rotation"]) != 0:
@@ -7084,10 +7115,26 @@ class CVATShape(CVATLabel):
         Returns:
             a :class:`fiftyone.core.labels.Keypoint`
         """
-        points = self._to_pairs_of_points(self.points)
+        # points = self._to_pairs_of_points(self.points)
+        e_points = []
+        occluded = []
+        for elem in sorted(self.elements, key=lambda elem: elem["label_id"]):
+            point = elem["points"]
+            o = elem["occluded"]
+            if elem["outside"]:
+                point = [float("nan"), float("nan")]
+                o = True
+
+            e_points.append(point)
+            occluded.append(o)
+
+        points = self._to_pairs_of_points(e_points)
         rel_points = HasCVATPoints._to_rel_points(points, self.frame_size)
         label = fol.Keypoint(
-            label=self.label, points=rel_points, index=self.index
+            label=self.label,
+            points=rel_points,
+            index=self.index,
+            occluded=occluded,
         )
         self._set_attributes(label)
         return label
