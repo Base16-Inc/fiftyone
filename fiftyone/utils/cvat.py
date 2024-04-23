@@ -4737,7 +4737,6 @@ class CVATAnnotationAPI(foua.AnnotationAPI):
                     label_field_results = self._merge_results(
                         label_field_results, shape_results
                     )
-
                     for track_index, track in enumerate(tracks, 1):
                         label_id = track["label_id"]
                         shapes = track["shapes"]
@@ -5874,6 +5873,9 @@ class CVATAnnotationAPI(foua.AnnotationAPI):
             elif shape_type == "points":
                 label_type = "keypoints"
                 label = cvat_shape.to_keypoint()
+            elif shape_type == "skeleton":
+                label_type = "keypoints"
+                label = cvat_shape.to_keypoint()
 
             if keyframe and label is not None:
                 label["keyframe"] = True
@@ -6992,6 +6994,7 @@ class CVATShape(CVATLabel):
 
         self.frame_size = (metadata["width"], metadata["height"])
         self.points = label_dict["points"]
+        self.elements = label_dict["elements"]
         self.index = index
 
         if "rotation" in label_dict and int(label_dict["rotation"]) != 0:
@@ -7084,7 +7087,12 @@ class CVATShape(CVATLabel):
         Returns:
             a :class:`fiftyone.core.labels.Keypoint`
         """
-        points = self._to_pairs_of_points(self.points)
+        # points = self._to_pairs_of_points(self.points)
+        e_points = []
+        for elem in sorted(self.elements, key=lambda elem: elem["label_id"]):
+            e_points.append(elem["points"])
+
+        points = self._to_pairs_of_points(e_points)
         rel_points = HasCVATPoints._to_rel_points(points, self.frame_size)
         label = fol.Keypoint(
             label=self.label, points=rel_points, index=self.index
