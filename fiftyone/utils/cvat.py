@@ -7089,13 +7089,18 @@ class CVATShape(CVATLabel):
         """
         # points = self._to_pairs_of_points(self.points)
         e_points = []
+        occluded = []
         for elem in sorted(self.elements, key=lambda elem: elem["label_id"]):
             e_points.append(elem["points"])
+            occluded.append(elem["occluded"])
 
         points = self._to_pairs_of_points(e_points)
         rel_points = HasCVATPoints._to_rel_points(points, self.frame_size)
         label = fol.Keypoint(
-            label=self.label, points=rel_points, index=self.index
+            label=self.label,
+            points=rel_points,
+            index=self.index,
+            occluded=occluded,
         )
         self._set_attributes(label)
         return label
