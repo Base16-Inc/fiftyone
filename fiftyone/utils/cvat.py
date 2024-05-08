@@ -6446,7 +6446,7 @@ class CVATAnnotationAPI(foua.AnnotationAPI):
             abs_points = HasCVATPoints._to_abs_points(kp.points, frame_size)
 
             elements = []
-            start_id = 39
+            start_id = 57
             for pt in abs_points:
                 elements.append(
                     {
