@@ -6443,20 +6443,32 @@ class CVATAnnotationAPI(foua.AnnotationAPI):
             if class_name is None:
                 continue
 
-            abs_points = HasCVATPoints._to_abs_points(kp.points, frame_size)
+            if hasattr(kp, "occluded"):
+                occluded = kp.occluded
+            else:
+                occluded = [False] * len(kp.points)
 
             elements = []
             start_id = 57
-            for pt in abs_points:
+
+            w, h = frame_size
+            for p, o in zip(kp.points, occluded):
+                x, y = p
+                outside = False
+                if np.isnan(x) | np.isnan(y):
+                    x = 0
+                    y = 0
+                    outside = True
                 elements.append(
                     {
                         "type": "points",
-                        "points": list(itertools.chain.from_iterable([pt])),
+                        "points": [int(round(x * w)), int(round(y * h))],
                         "label_id": start_id,
                         "frame": 0,
+                        "outside": outside,
+                        "occluded": o,
                     }
                 )
-
                 start_id += 1
 
             shape = {
@@ -7091,8 +7103,14 @@ class CVATShape(CVATLabel):
         e_points = []
         occluded = []
         for elem in sorted(self.elements, key=lambda elem: elem["label_id"]):
-            e_points.append(elem["points"])
-            occluded.append(elem["occluded"])
+            point = elem["points"]
+            o = elem["occluded"]
+            if elem["outside"]:
+                point = [float("nan"), float("nan")]
+                o = True
+
+            e_points.append(point)
+            occluded.append(o)
 
         points = self._to_pairs_of_points(e_points)
         rel_points = HasCVATPoints._to_rel_points(points, self.frame_size)
