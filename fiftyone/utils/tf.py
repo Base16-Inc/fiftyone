@@ -18,6 +18,8 @@ from skimage.color import rgba2rgb
 import eta.core.image as etai
 import eta.core.utils as etau
 
+import tensorflow as tf
+
 import fiftyone as fo
 import fiftyone.core.labels as fol
 import fiftyone.core.metadata as fom
@@ -25,8 +27,6 @@ import fiftyone.core.utils as fou
 import fiftyone.utils.data as foud
 
 fou.ensure_tf(eager=True)
-import tensorflow as tf
-
 
 logger = logging.getLogger(__name__)
 
@@ -1124,15 +1124,15 @@ class TFObjectDetectionExampleGenerator(TFExampleGenerator):
                 if keypoint.label not in self._kpt_label_map:
                     continue
 
-                for point, v in zip(keypoint.points, keypoint.visible):
+                for point, o in zip(keypoint.points, keypoint.occluded):
                     kpts_x.append(point[0])
                     kpts_y.append(point[1])
-                    if v:
-                        kpts_v.append(2)
-                    else:
+                    if o:
                         kpts_v.append(0)
+                    else:
+                        kpts_v.append(2)
 
-                num_kpts.append(keypoint.visible.count(True))
+                num_kpts.append(keypoint.occluded.count(False))
                 kpts_name = self._kpt_label_map[keypoint.label]
                 kpts_name = [name.encode() for name in kpts_name]
                 kpts_text.extend(kpts_name)
